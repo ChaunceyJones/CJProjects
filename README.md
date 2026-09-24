@@ -1,7 +1,7 @@
 # Permian–Waha Basis Dashboard & Trade Recommendation
 
-**One-line hook (fill in once you have a finding):**
-> "Waha basis widened to $X below Henry Hub in [month] — Y std devs beyond the 2-year norm, driven by [pipeline/weather/storage]."
+**One-line hook:**
+> Waha traded at a $0.91/MMBtu average discount to Henry Hub from 2022–2026, but 9 weeks saw dislocations beyond 2 standard deviations — including a $5.93/MMBtu collapse in October 2022 and a rare premium (+$2.01) in December 2024.
 
 ## 1. Business context
 You're acting as a junior trading/market analyst supporting a Gas & Power trading desk (modeled on real
@@ -30,10 +30,39 @@ a sample against the source pages before trusting the series for analysis.
 - Correlate basis moves against storage levels, weather, and rig activity
 
 ## 4. Key findings
-_(3–5 findings, each with a number, once analysis is done)_
+1. **Waha traded below Henry Hub in the large majority of weeks** — median basis of −$0.63/MMBtu
+   and a mean of −$0.91/MMBtu across 111 weeks with usable data (2022–2026), consistent with
+   known Permian Basin takeaway-capacity constraints.
+2. **The distribution has a long negative tail rather than being evenly spread** — the 75th
+   percentile basis is still only −$0.30/MMBtu, but the minimum reaches −$5.93/MMBtu. Most
+   weeks are a modest, expected discount; a small number are severe dislocations.
+3. **9 of 111 weeks (~8%) were flagged as statistically unusual** (|z-score| > 2 vs. a trailing
+   12-observation mean), split into two distinct patterns rather than one:
+   - **Deep negative dislocations** — Oct 26, 2022 (−$5.93), Aug 28, 2024 (−$5.56), and Mar 19,
+     2025 (−$4.78) are the three most severe. These align with the known 2022–2024 period of
+     chronic Permian oversupply and pipeline maintenance widely reported by EIA in the same
+     period (see raw source commentary in `data/raw/waha_weekly_parsed.csv`).
+   - **A rare positive anomaly** — Dec 18, 2024 is the one week where Waha priced *above* Henry
+     Hub (+$2.01/MMBtu), the opposite of its usual discount. Worth a follow-up look at regional
+     weather/demand data for that week specifically (a West Texas cold snap is the likely driver,
+     not yet confirmed against a weather dataset).
+4. Full flagged-week table and summary stats are reproducible from
+   `notebooks/01_basis_analysis.ipynb` and saved to `data/processed/basis_table.csv`.
 
 ## 5. Recommendation
-_(Quantified, tied to a specific decision — e.g. hedge timing, capacity nomination)_
+For a trading/commercial desk, the practical signal here is the **flag itself, not the raw
+basis level** — a trailing-window z-score catches genuine regime shifts rather than reacting to
+Waha's normal, expected discount. Concretely:
+- Treat a basis move beyond ~2 standard deviations from the trailing 12-week mean (roughly
+  ±$2.15/MMBtu from a −$0.91 baseline, based on this dataset) as a trigger for a manual review
+  of regional pipeline/maintenance news before the position is adjusted — not an automatic
+  trade signal on its own.
+- The rare positive-anomaly case (Dec 2024) suggests it's worth specifically monitoring winter
+  weeks for the *reverse* trade opportunity, since the desk's attention is naturally biased
+  toward the more common negative-discount story.
+- Next step to make this decision-grade rather than descriptive: join in storage and rig-count
+  data (already scoped in section 2) to test whether flagged weeks are predictable in advance
+  from leading indicators, rather than only identifiable after the fact.
 
 ## 6. Limitations & assumptions
 - **Waha coverage ends January 21, 2026.** EIA discontinued the Natural Gas Weekly Update
