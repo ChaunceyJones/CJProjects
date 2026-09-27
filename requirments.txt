@@ -1,0 +1,8 @@
+requests
+pandas
+python-dotenv
+matplotlib
+beautifulsoup4
+notebook
+ipykernel
+scipy
