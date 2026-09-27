@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/32693203/README.md)
 # Permian–Waha Basis Dashboard & Trade Recommendation
 
 **One-line hook:**
@@ -30,6 +29,10 @@ applies to the rig-count figures parsed from the same pages.
 - Basis = Waha price − Henry Hub price, by day/week
 - Flag basis moves beyond N standard deviations of trailing 60/90-day mean
 - Correlate basis moves against storage levels, weather, and rig activity
+
+ ## Architecture
+
+![Pipeline architecture](images/architecture.svg)
 
 ## 4. Key findings
 1. **Waha traded below Henry Hub in the large majority of weeks** — median basis of −$0.63/MMBtu
