@@ -3,38 +3,65 @@
 **One-line hook:**
 > Waha traded at a $0.91/MMBtu average discount to Henry Hub from 2022–2026, but 9 weeks saw dislocations beyond 2 standard deviations — including a $5.93/MMBtu collapse in October 2022 and a rare premium (+$2.01) in December 2024.
 
-## 1. Business context
-You're acting as a junior trading/market analyst supporting a Gas & Power trading desk (modeled on real
-Houston-market JDs: Permian Basin / South Texas fundamentals, basis dislocations, trading insight delivery).
-The desk needs an early-warning view of when Waha (Permian hub) gas prices decouple from Henry Hub
-(the national benchmark) far enough to matter for positioning or pipeline-capacity decisions.
+## Introduction
 
-## 2. The data
-| Source | What | Frequency | Notes |
-|---|---|---|---|
-| **FRED API** (`api.stlouisfed.org`) | Henry Hub spot price (`DHHNGSP`) | Daily | EIA's own v2 route for this **stopped updating in April 2024** — confirmed by inspecting the route directly. FRED mirrors the same underlying EIA data and is still current. |
-| **EIA Weekly Update reports** (parsed) | Waha Hub spot price | Weekly | No clean API exists anywhere for Waha (checked EIA v2 and FRED). EIA states the price in prose in each week's report — parsed with regex in `src/parse_waha_weekly.py`. This is the real "messy data" element of the project. |
-| **EIA Weekly Update reports** (parsed, same pages as Waha) | Weekly rig count (oil/gas rigs, Baker Hughes-sourced) | Weekly | Reuses the same fetched pages as the Waha parser rather than hitting EIA again. Report wording changed formats over the years (narrative vs. table) — both handled, best-effort. |
-| EIA API v2, South Central region | Natural gas storage | Weekly | `natural-gas/stor/wkly`, filtered to South Central (the region containing Texas) rather than the Lower 48 aggregate, since that's the storage figure actually relevant to Permian dynamics. Find both the facet key name and the region value via `python src/extract_eia.py --list-facets natural-gas/stor/wkly` (defaults to guessing `duoarea` as the key — override with `--facet-name` if that's wrong). |
+Waha (the Permian Basin gas hub) usually trades at a discount to Henry Hub, the U.S. national
+benchmark, due to regional pipeline takeaway constraints. This project builds a full pipeline —
+from messy, unstructured source data to a statistically-grounded monitoring rule — to answer a
+question a trading desk actually cares about: when does that discount widen or reverse far enough
+to matter for a decision, rather than just being Waha's normal, everyday behavior?
 
-Schema (target, after cleaning): `date | hub | price_usd_mmbtu | source`
-
-**Data quality note for your limitations section:** the Waha series is regex-parsed from
-narrative text that isn't perfectly consistent week to week. Expect some weeks to not match
-the pattern — the parser flags these explicitly rather than silently dropping them. Spot-check
-a sample against the source pages before trusting the series for analysis. The same caveat
-applies to the rig-count figures parsed from the same pages.
-
-## 3. Methodology (fill in as you build)
-- Basis = Waha price − Henry Hub price, by day/week
-- Flag basis moves beyond N standard deviations of trailing 60/90-day mean
-- Correlate basis moves against storage levels, weather, and rig activity
-
- ## Architecture
+## Architecture
 
 ![Pipeline architecture](images/architecture.svg)
 
-## 4. Key findings
+## Technology Used
+
+- **Python** — extraction, parsing, and analysis
+- **Pandas** — data cleaning and joins, including a `merge_asof` join across mismatched report dates (Wednesday basis data vs. Friday storage data)
+- **Regex parsing (BeautifulSoup)** — extracting prices directly out of unstructured EIA report prose, since no clean API exists for Waha anywhere
+- **FRED API** — current Henry Hub daily prices
+- **EIA Open Data API v2** — regional natural gas storage
+- **scipy** — hypothesis testing and p-values for the leading-indicator analysis
+- **Jupyter Notebook** — the full, reproducible analysis
+
+## Dataset Used
+
+| Source | What | Frequency | Notes |
+|---|---|---|---|
+| **FRED API** (`api.stlouisfed.org`) | Henry Hub spot price (`DHHNGSP`) | Daily | EIA's own v2 route for this **stopped updating in April 2024** — confirmed by inspecting the route directly. FRED mirrors the same underlying data and is still current. |
+| **EIA Weekly Update reports** (parsed) | Waha Hub spot price + weekly rig count | Weekly | No clean API exists anywhere for Waha (checked EIA v2 and FRED). EIA states the price in prose each week — parsed with regex in `src/parse_waha_weekly.py`. This is the real "messy data" element of the project. Rig count is parsed from the same pages, reusing the same fetch. |
+| **EIA API v2, South Central region** | Natural gas storage | Weekly | `natural-gas/stor/wkly`, filtered to South Central (the region containing Texas) rather than the Lower 48 aggregate. |
+
+Full data-quality caveats (parsing coverage gaps, cross-source methodology differences) are in
+[Limitations & assumptions](#limitations--assumptions) below — worth reading before treating any
+single number here as precise to the penny.
+
+## Results
+
+![Basis chart](data/processed/basis_chart.png)
+
+- **111 usable weeks** of Waha pricing, spanning 2022–2026
+- **9 weeks flagged** as statistically unusual (|z-score| > 2 vs. a trailing 12-week mean)
+- Full reproducible analysis: [`notebooks/01_basis_analysis.ipynb`](notebooks/01_basis_analysis.ipynb)
+  — if GitHub's preview fails to render it, open it in
+  [nbviewer](https://nbviewer.org/github/ChaunceyJones/CJProjects/blob/main/notebooks/01_basis_analysis.ipynb) instead
+
+---
+
+## Business context
+You're acting as a junior trading/market analyst supporting a Gas & Power trading desk (modeled on real
+Houston-market JDs: Permian Basin / South Texas fundamentals, basis dislocations, trading insight delivery).
+The desk needs an early-warning view of when Waha gas prices decouple from Henry Hub far enough to
+matter for positioning or pipeline-capacity decisions.
+
+## Methodology
+- Basis = Waha price − Henry Hub price, weekly
+- Flag basis moves beyond 2 standard deviations of a trailing 12-observation mean
+- Correlate basis moves against storage levels and rig activity, testing for both same-week and
+  lagged (leading-indicator) relationships
+
+## Key findings
 1. **Waha traded below Henry Hub in the large majority of weeks** — median basis of −$0.63/MMBtu
    and a mean of −$0.91/MMBtu across 111 weeks with usable data (2022–2026), consistent with
    known Permian Basin takeaway-capacity constraints.
@@ -73,7 +100,7 @@ applies to the rig-count figures parsed from the same pages.
    all reproducible from `notebooks/01_basis_analysis.ipynb` and saved to
    `data/processed/basis_table.csv` and `data/processed/basis_table_enriched.csv`.
 
-## 5. Recommendation
+## Recommendation
 For a trading/commercial desk, the practical signal here is the **flag itself, not the raw
 basis level** — a trailing-window z-score catches genuine regime shifts rather than reacting to
 Waha's normal, expected discount. Concretely:
@@ -95,7 +122,7 @@ Waha's normal, expected discount. Concretely:
   with more data (either a longer time window, or a source with fuller rig-count coverage than
   the 64% this project's parser achieved), not something to act on today.
 
-## 6. Limitations & assumptions
+## Limitations & assumptions
 - **Waha coverage ends January 21, 2026.** EIA discontinued the Natural Gas Weekly Update
   report after that edition, replacing it with a "Weekly Natural Gas Storage Report Supplement"
   on their Beta site, which uses a different structure. All Waha-series analysis in this project
@@ -115,41 +142,36 @@ Waha's normal, expected discount. Concretely:
   ICE "Wholesale Electricity Market Data" spreadsheet covering seven major hubs, which may
   include Waha as structured (non-prose) data — worth investigating if more density is needed.
 
-## 7. Repo structure
+## Repo structure
 ```
-permian-waha-basis/
+CJProjects/
 ├── README.md
 ├── requirements.txt
-├── .env.example          # copy to .env, add your EIA_API_KEY
+├── .env.example          # copy to .env, add your EIA_API_KEY and FRED_API_KEY
 ├── src/
 │   ├── config.py         # series IDs / route constants
-│   └── extract_eia.py    # pulls raw data from EIA API → data/raw/
+│   ├── extract_eia.py    # pulls storage data from EIA API → data/raw/
+│   ├── extract_fred.py   # pulls Henry Hub daily prices from FRED → data/raw/
+│   └── parse_waha_weekly.py  # regex-parses Waha price + rig count from EIA report pages
 ├── data/
-│   ├── raw/              # untouched API pulls
-│   └── processed/        # cleaned, joined basis table
-├── notebooks/            # exploration + basis analysis
-└── dags/                 # Airflow DAG (added once extraction is proven out)
+│   ├── raw/              # untouched pulls (henry_hub, waha_weekly_parsed, storage csvs)
+│   └── processed/        # basis_table.csv, basis_table_enriched.csv, chart images
+├── images/
+│   └── architecture.svg  # pipeline diagram used above
+└── notebooks/
+    └── 01_basis_analysis.ipynb  # the full analysis, start to finish
 ```
 
-## Build order (don't build Airflow/dbt first)
-1. ~~Get an EIA API key, run `src/extract_eia.py`~~ — done, but confirmed the Henry Hub futures
-   route is dead since April 2024. Storage route (`src/extract_eia.py`, unchanged) is still fine.
-2. Get a free FRED API key, add it to `.env`, run `python src/extract_fred.py` for current
-   Henry Hub prices.
-3. Run `python src/parse_waha_weekly.py --start 2022-01-01 --end 2026-09-01` to build the
-   Waha series. Check the console output for weeks it couldn't parse and spot-check a few
-   against the source URLs before trusting the data.
-4. Join Henry Hub (FRED) + Waha (parsed) into a basis table in a notebook; sanity-check
-   against numbers EIA states directly in the reports (e.g. "$4.79 below Henry Hub"). Done in
-   `notebooks/01_basis_analysis.ipynb`.
-5. Build the basis calc, rolling z-score flag, and chart. Also done in that notebook —
-   outputs `data/processed/basis_table.csv` and `data/processed/basis_chart.png`.
-6. Read the flagged weeks and widest-basis weeks in the notebook's summary output, then write
-   the actual "Key findings" and "Recommendation" sections in this README using them. **Done.**
-7. **Enrichment (done):** South Central storage (`extract_eia.py`, `duoarea=R33`/`process=SWO`)
-   and rig counts (parsed from the same pages as Waha, in `parse_waha_weekly.py`) are now joined
-   into the basis table in the notebook's sections 7-9, including a same-week correlation check
-   and a lagged (leading-indicator) correlation check. Read those outputs and decide whether
-   they're strong enough to promote into the Key Findings / Recommendation sections above, or
-   whether they're inconclusive given the modest sample sizes — say so honestly either way.
-8. Only then wrap extraction in an Airflow DAG and add dbt if you want the "pipeline" story for your portfolio.
+## Build order (for anyone reproducing this from scratch)
+1. Get a free EIA API key and a free FRED API key, add both to `.env` (copy from `.env.example`).
+2. Run `python src/extract_fred.py` for current Henry Hub prices.
+3. Run `python src/extract_eia.py` for South Central storage (defaults to the right region/process facets).
+4. Run `python src/parse_waha_weekly.py --start 2022-01-01 --end 2026-01-21` to build the Waha +
+   rig-count series. Check the console output for weeks it couldn't parse, and spot-check a few
+   against the source URLs before trusting the data — see Limitations above for why some weeks
+   won't match.
+5. Open `notebooks/01_basis_analysis.ipynb` and run all cells: joins the three sources, computes
+   the basis, flags anomalies, and runs the storage/rig-count leading-indicator tests with proper
+   p-values and a multiple-comparisons correction.
+6. Optional next step, not yet done: wrap extraction in an Airflow DAG and add dbt if you want a
+   fully automated "pipeline" story rather than a manually-run analysis.
