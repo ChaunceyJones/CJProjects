@@ -1,0 +1,12 @@
+# Only needed if you're actually running the DAG in dags/permian_waha_pipeline_dag.py.
+# Kept separate from the main requirements.txt because Airflow has strict, often-conflicting
+# dependency pins that can break an environment meant just for running the analysis scripts.
+#
+# Install in its own virtual environment, not alongside requirements.txt:
+#   python -m venv airflow-env && source airflow-env/bin/activate
+#   pip install -r requirements-airflow.txt
+#
+# See https://airflow.apache.org/docs/apache-airflow/stable/installation/index.html for the
+# current recommended install method (Airflow's own constraints files are usually required).
+
+apache-airflow>=2.8
