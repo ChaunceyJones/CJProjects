@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/32882494/README.md)
 # Permian–Waha Basis Dashboard & Trade Recommendation
 
 **One-line hook:**
@@ -23,7 +24,10 @@ to matter for a decision, rather than just being Waha's normal, everyday behavio
 - **FRED API** — current Henry Hub daily prices
 - **EIA Open Data API v2** — regional natural gas storage
 - **scipy** — hypothesis testing and p-values for the leading-indicator analysis
-- **Jupyter Notebook** — the full, reproducible analysis
+- **SQL (DuckDB)** — the rolling-window anomaly detection reimplemented as a window function,
+  cross-validated against the pandas version (`sql/basis_anomalies.sql`)
+- **Jupyter Notebook** — the deeper, human-reviewed analysis
+- **Apache Airflow** — weekly scheduled orchestration of the extraction + table-build pipeline
 
 ## Dataset Used
 
@@ -142,24 +146,45 @@ Waha's normal, expected discount. Concretely:
   ICE "Wholesale Electricity Market Data" spreadsheet covering seven major hubs, which may
   include Waha as structured (non-prose) data — worth investigating if more density is needed.
 
+## Pipeline
+`dags/permian_waha_pipeline_dag.py` orchestrates the weekly refresh: Henry Hub, storage, and Waha
+extraction run in parallel, then `src/build_basis_table.py` rebuilds the basis table and chart.
+Scheduled for Thursdays, matching EIA's historical weekly release day.
+
+**Known limitation:** the Waha extraction task will currently find no new data on every run.
+EIA discontinued the report it depends on after January 21, 2026 (see Limitations below) —
+this isn't a bug, it's a real, documented gap. The Henry Hub and storage tasks are unaffected,
+since both of those sources are still live. Fixing the Waha task requires migrating the parser
+to EIA's replacement report, which hasn't been built yet.
+
+Airflow itself isn't included in `requirements.txt` — see `requirements-airflow.txt` for why
+and how to install it separately.
+
 ## Repo structure
 ```
 CJProjects/
 ├── README.md
 ├── requirements.txt
-├── .env.example          # copy to .env, add your EIA_API_KEY and FRED_API_KEY
+├── requirements-airflow.txt   # only needed to actually run the DAG
+├── .env.example               # copy to .env, add your EIA_API_KEY and FRED_API_KEY
 ├── src/
-│   ├── config.py         # series IDs / route constants
-│   ├── extract_eia.py    # pulls storage data from EIA API → data/raw/
-│   ├── extract_fred.py   # pulls Henry Hub daily prices from FRED → data/raw/
-│   └── parse_waha_weekly.py  # regex-parses Waha price + rig count from EIA report pages
+│   ├── config.py              # series IDs / route constants
+│   ├── extract_eia.py         # pulls storage data from EIA API → data/raw/
+│   ├── extract_fred.py        # pulls Henry Hub daily prices from FRED → data/raw/
+│   ├── parse_waha_weekly.py   # regex-parses Waha price + rig count from EIA report pages
+│   ├── build_basis_table.py   # joins the three sources, computes basis + z-score flags
+│   └── run_sql_analysis.py    # runs the SQL version and cross-checks it against pandas
+├── sql/
+│   └── basis_anomalies.sql    # basis + rolling z-score as a SQL window function
+├── dags/
+│   └── permian_waha_pipeline_dag.py  # weekly Airflow DAG wrapping the scripts above
 ├── data/
 │   ├── raw/              # untouched pulls (henry_hub, waha_weekly_parsed, storage csvs)
 │   └── processed/        # basis_table.csv, basis_table_enriched.csv, chart images
 ├── images/
 │   └── architecture.svg  # pipeline diagram used above
 └── notebooks/
-    └── 01_basis_analysis.ipynb  # the full analysis, start to finish
+    └── 01_basis_analysis.ipynb  # the deeper, human-reviewed analysis (not part of the scheduled run)
 ```
 
 ## Build order (for anyone reproducing this from scratch)
@@ -173,5 +198,11 @@ CJProjects/
 5. Open `notebooks/01_basis_analysis.ipynb` and run all cells: joins the three sources, computes
    the basis, flags anomalies, and runs the storage/rig-count leading-indicator tests with proper
    p-values and a multiple-comparisons correction.
-6. Optional next step, not yet done: wrap extraction in an Airflow DAG and add dbt if you want a
-   fully automated "pipeline" story rather than a manually-run analysis.
+6. **Done:** `dags/permian_waha_pipeline_dag.py` wraps steps 2-4 (Henry Hub, storage, and the
+   basis table build) into a scheduled weekly Airflow DAG. The Waha extraction step is included
+   in the DAG too but currently finds nothing new each run — see the Pipeline section above for
+   why. See `requirements-airflow.txt` before trying to run it.
+7. Optional cross-check: `python src/run_sql_analysis.py` runs `sql/basis_anomalies.sql` via
+   DuckDB — the same basis calculation and rolling z-score anomaly flagging implemented as a
+   SQL window function — and reports any disagreement with the pandas output. Two independent
+   implementations agreeing is a stronger correctness signal than one looking plausible.
