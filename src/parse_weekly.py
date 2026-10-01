@@ -136,12 +136,28 @@ def parse_week(report_date: date, text: str) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", required=True, help="YYYY-MM-DD")
-    parser.add_argument("--end", required=True, help="YYYY-MM-DD")
+    parser.add_argument("--start", help="YYYY-MM-DD. Omit for incremental mode (last 3 weeks).")
+    parser.add_argument("--end", help="YYYY-MM-DD. Omit for incremental mode (defaults to today).")
+    parser.add_argument("--full-rebuild", action="store_true",
+                         help="Overwrite the existing CSV entirely instead of merging new rows in. "
+                              "Use for the initial historical backfill; omit for routine/scheduled runs.")
     args = parser.parse_args()
 
-    start = date.fromisoformat(args.start)
-    end = date.fromisoformat(args.end)
+    out_path = RAW_DIR / "waha_weekly_parsed.csv"
+
+    if args.start and args.end:
+        start = date.fromisoformat(args.start)
+        end = date.fromisoformat(args.end)
+    else:
+        # Incremental mode: only check the last few report weeks. A 3-week lookback tolerates
+        # a run being skipped once without needing a full historical re-scrape.
+        # NOTE: EIA discontinued this exact report after the Jan 21, 2026 edition (see README
+        # Limitations). Incremental mode will currently find nothing and report every week as
+        # "no working URL found" until this parser is migrated to the replacement report
+        # (the WNGSR Supplement on EIA's Beta site) — that migration hasn't been done yet.
+        end = date.today()
+        start = end - timedelta(weeks=3)
+        print(f"No --start/--end given — running incremental mode ({start} to {end}).")
 
     rows = []
     misses = []
@@ -156,17 +172,33 @@ if __name__ == "__main__":
         print(f"  [{d}] fetched ({url_date}) - {status}", flush=True)
         time.sleep(0.5)  # be polite to EIA's servers
 
-    df = pd.DataFrame(rows)
+    new_df = pd.DataFrame(rows)
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    df.to_csv(RAW_DIR / "waha_weekly_parsed.csv", index=False)
 
-    n_found = df["waha_price"].notna().sum() if len(df) else 0
-    n_rigs = df["total_rig_count"].notna().sum() if len(df) else 0
-    print(f"Parsed {len(df)} report weeks, found a Waha price in {n_found} of them, "
+    if not args.full_rebuild and out_path.exists():
+        existing = pd.read_csv(out_path, parse_dates=["report_date"])
+        new_df["report_date"] = pd.to_datetime(new_df["report_date"])
+        combined = pd.concat([existing, new_df])
+        # Keep the newest parse of any report_date that appears in both (in case wording/parsing
+        # improved since the last run), rather than silently duplicating rows.
+        combined = combined.drop_duplicates(subset="report_date", keep="last")
+        df = combined.sort_values("report_date").reset_index(drop=True)
+        print(f"Merged {len(new_df)} newly-fetched weeks with {len(existing)} existing rows "
+              f"-> {len(df)} total rows.")
+    else:
+        df = new_df
+        if args.full_rebuild:
+            print("Full rebuild requested — overwriting any existing file.")
+
+    df.to_csv(out_path, index=False)
+
+    n_found = new_df["waha_price"].notna().sum() if len(new_df) else 0
+    n_rigs = new_df["total_rig_count"].notna().sum() if len(new_df) else 0
+    print(f"This run: parsed {len(new_df)} report weeks, found a Waha price in {n_found} of them, "
           f"and a rig count in {n_rigs} of them.")
     if misses:
         print(f"Could not fetch {len(misses)} weeks (bad URL or network issue): {misses[:5]}...")
-    unmatched = df[df["waha_price"].isna()] if len(df) else pd.DataFrame()
+    unmatched = new_df[new_df["waha_price"].isna()] if len(new_df) else pd.DataFrame()
     if len(unmatched):
         print(f"{len(unmatched)} weeks fetched but no price pattern matched — "
               f"spot-check these manually, wording sometimes varies:")
