@@ -6,3 +6,4 @@ beautifulsoup4
 notebook
 ipykernel
 scipy
+duckdb
