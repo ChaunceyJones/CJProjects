@@ -1,0 +1,5 @@
+# The source workbook is 54 MB — too large to sensibly commit. src/download_lbnl_data.py
+# re-downloads it on demand instead.
+data/raw/*.xlsx
+data/raw/*.zip
+.env
