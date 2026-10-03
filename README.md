@@ -4,6 +4,10 @@
 **One-line hook:**
 > Waha traded at a $0.91/MMBtu average discount to Henry Hub from 2022–2026, but 9 weeks saw dislocations beyond 2 standard deviations — including a $5.93/MMBtu collapse in October 2022 and a rare premium (+$2.01) in December 2024.
 
+📊 [Presentation deck (PDF)](https://chaunceyjones.github.io/decks/waha-basis-tracker.pdf) ·
+🌐 [Portfolio site](https://chaunceyjones.github.io) ·
+📁 [All projects](https://github.com/ChaunceyJones/Chaunceys_Portfolio)
+
 ## Introduction
 
 Waha (the Permian Basin gas hub) usually trades at a discount to Henry Hub, the U.S. national
